@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """voice-remind "<when>" "<message>" [en|es] -> omarchy reminder <minutes> <message>
 <when> is spoken text: "10 minutes", "an hour", "half an hour", "media hora",
-"dos horas", "90 seconds", "una hora y media"..."""
+"dos horas", "90 seconds", "una hora y media"...
+
+voice-remind --split "<when> to <message>" [en|es]
+  splits at the first "to/that/about" (que/de/para) that follows a duration:
+  "10 minutes to go to the store" -> "10 minutes" + "go to the store"."""
 import math, re, subprocess, sys
 
 WORDS = {
@@ -44,9 +48,27 @@ def minutes(when):
     return max(1, math.ceil(total)) if found and total > 0 else None
 
 
+SEPARATORS = {"to", "that", "about", "que", "de", "para"}
+
+
+def split(rest):
+    """'10 minutes to go to the store' -> ('10 minutes', 'go to the store').
+    The earliest separator after a valid duration wins, so the message keeps
+    any later 'to'. No separator: the whole text is the duration."""
+    toks = rest.split()
+    for i in range(1, len(toks)):
+        if toks[i] in SEPARATORS and minutes(" ".join(toks[:i])) is not None:
+            return " ".join(toks[:i]), " ".join(toks[i + 1:])
+    return rest, ""
+
+
 def main():
-    when, what = sys.argv[1], sys.argv[2].strip() or "Reminder"
-    lang = sys.argv[3] if len(sys.argv) > 3 else "en"
+    args = [a for a in sys.argv[1:] if a != "--dry"]
+    if args and args[0] == "--split":
+        when, what = split(args[1])
+        args = [when, what] + args[2:]
+    when, what = args[0], args[1].strip() or "Reminder"
+    lang = args[2] if len(args) > 2 else "en"
     m = minutes(when)
     if m is None:
         subprocess.run(["notify-send", "-a", "Voice command", "Voice command", f"Didn't understand the time: “{when}”"])
@@ -65,6 +87,6 @@ def main():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--parse":
         for x in sys.argv[2:]:
-            print(f"{x!r} -> {minutes(x)}")
+            print(f"{x!r} -> {minutes(x)}  split: {split(x)}")
     else:
         main()
