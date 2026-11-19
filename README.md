@@ -27,7 +27,7 @@ a key and say **"open the terminal"**, or turn on the optional wake word and say
 | Trigger | How |
 |---|---|
 | Wake word (optional, `./install.sh --wake-word`) | say "hey jarvis", then the command (or both in one breath) |
-| Keyboard | hold **Ctrl+Shift+Alt+Space**, talk, release |
+| Keyboard | hold **Ctrl+Shift+Space**, talk, release |
 | Mouse | hold both side buttons, talk, release either one |
 
 When it's listening, playing audio is ducked to 20% and comes back afterwards. A sound

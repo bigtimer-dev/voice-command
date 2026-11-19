@@ -1,5 +1,7 @@
 -- Voice commands (Superwhisper transcription -> ~/.config/voice-commands/commands.conf)
-o.bind_hold("CTRL + SHIFT + ALT + SPACE", "Voice command (hold to talk)", "voice-command --start", "Voice command: run", "voice-command --stop")
+-- Ctrl+Shift+Space, not anything with Alt+Shift: Omarchy setups with two keyboard
+-- layouts often use grp:alt_shift_toggle, which eats Alt+Shift as the layout switch.
+o.bind_hold("CTRL + SHIFT + SPACE", "Voice command (hold to talk)", "voice-command --start", "Voice command: run", "voice-command --stop")
 
 -- Voice command on the mouse: hold both side buttons (Logitech G305 Back +
 -- Forward, mouse:275 + mouse:276) to talk, release either to run. The binds
