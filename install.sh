@@ -18,6 +18,16 @@ case ${1:-} in
   *) echo "usage: $0 [--wake-word | --no-wake-word]" >&2; exit 2 ;;
 esac
 
+missing=()
+for c in superwhisper uv jq curl iconv pw-record pw-play paplay pactl wpctl notify-send hyprctl; do
+  command -v "$c" >/dev/null || missing+=("$c")
+done
+if (( ${#missing[@]} )); then
+  echo "Missing: ${missing[*]}" >&2
+  echo "Install them first (Superwhisper, uv, jq, PipeWire tools, libnotify), then re-run." >&2
+  exit 1
+fi
+
 mkdir -p "$BIN" "$VA" "$TTS/voices" "$CONF"
 for f in bin/*; do
   [[ $f == bin/wake-word-enroll ]] && continue

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Always-on wake word for voice-command: "hey jarvis" (set WAKE_JOHAN=1 to also use the personal "hey johan").
+"""Always-on wake word for voice-command: "hey jarvis" (set WAKE_PERSONAL=1 to also use your own phrase).
 
 Listens to the default microphone, cuts it into speech segments, and compares
-each one (MFCC + DTW, see matcher.py) with recordings of *your* "hey johan" in
+each one (MFCC + DTW, see matcher.py) with recordings of *your* wake phrase in
 templates/. On a match it chimes, records the command until you stop talking,
 and hands it to `voice-command --file` (Superwhisper transcription + matching).
 
 "hey jarvis" (openWakeWord's pre-trained model) works too, for any voice.
 
-You can pause after "hey johan" or say it all in one breath
-("hey johan open terminal"): long segments are checked on their first second.
+You can pause after your phrase or say it all in one breath
+("<phrase> open terminal"): long segments are checked on their first second.
 
 Pause without stopping the service:  touch $XDG_RUNTIME_DIR/wake-word.paused
 Add more samples of your voice:       wake-word-enroll
@@ -33,7 +33,7 @@ KEEP_CLIPS = 40
 AUTO_ADD = float(os.environ.get("WAKE_AUTO_ADD", "1.50"))   # learn from matches at least this clear
 MAX_AUTO = 12                                               # auto-learned samples kept (oldest dropped)
 
-USE_JOHAN = os.environ.get("WAKE_JOHAN", "0") == "1"   # personal "hey johan" (off: hey jarvis only)
+USE_PERSONAL = os.environ.get("WAKE_PERSONAL", "0") == "1"   # phrase from wake-word-enroll (off: hey jarvis only)
 THRESHOLD = float(os.environ.get("WAKE_THRESHOLD", "1.65"))   # lower = stricter
 PREFIX_THRESHOLD = float(os.environ.get("WAKE_PREFIX_THRESHOLD", "1.85"))  # one-breath
 RATE = M.RATE
@@ -42,7 +42,7 @@ CHUNK = int(RATE * STEP) * 2
 CHIME = "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
 CHIME_VOLUME = 1.2                           # 1.0 = file as is
 
-# pre-trained "hey jarvis" (openWakeWord), works alongside your own "hey johan"
+# pre-trained "hey jarvis" (openWakeWord), works alongside your own phrase
 JARVIS_THRESHOLD = float(os.environ.get("WAKE_JARVIS_THRESHOLD", "0.6"))
 JARVIS_FRAME = 1280                          # 80 ms, what the model expects
 
@@ -169,11 +169,11 @@ def learn(seg_bytes, score):
 
 
 def main():
-    det = Detector() if USE_JOHAN else None
+    det = Detector() if USE_PERSONAL else None
     try:
         jar = Jarvis()
         log(f"hey jarvis enabled, threshold {JARVIS_THRESHOLD}")
-    except Exception as e:                       # keep hey johan working regardless
+    except Exception as e:                       # keep the personal phrase working regardless
         jar = None
         log("hey jarvis unavailable:", e)
     if det and not det.templates:
@@ -213,7 +213,7 @@ def main():
             in_seg, seg, pending, rest = False, [], None, None
             pre.clear()
         else:
-            if det is None:                   # hey johan turned off
+            if det is None:                   # personal phrase turned off
                 continue
             if not in_seg:
                 pre.append(b)
@@ -241,7 +241,7 @@ def main():
                     det.maybe_reload()
                     continue
             elif not long_checked and dur >= PREROLL + PREFIX_WINDOW:
-                # still talking: maybe "hey johan open terminal" in one breath
+                # still talking: maybe "<phrase> open terminal" in one breath
                 long_checked = True
                 audio = b"".join(seg)
                 off = int(PREROLL * RATE) * 2
