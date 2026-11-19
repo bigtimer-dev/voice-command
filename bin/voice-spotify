@@ -83,7 +83,11 @@ def search(q, tok):
             t = max(mine, key=lambda t: t.get("popularity") or 0)
             return t["uri"], f'{t["name"]} – {a["name"]}'
     # "music to sleep" / "lofi beats" -> a playlist if its name fits better than any track
-    if playlists and sq and sq in simple(playlists[0]["name"]) and not (tracks and sq in simple(tracks[0]["name"])):
+    # ("bohemian rhapsody queen" is the song + artist, not the playlist with that in its name)
+    def track_words(t):
+        return set(simple(t["name"] + " " + " ".join(a["name"] for a in t["artists"])).split())
+    song = bool(tracks) and set(sq.split()) <= track_words(tracks[0])
+    if playlists and sq and sq in simple(playlists[0]["name"]) and not song:
         p = playlists[0]
         return p["uri"], f'playlist “{p["name"]}”'
     if tracks:
