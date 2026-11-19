@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""voice-remind "<when>" "<message>" [en|es] -> omarchy reminder <minutes> <message>
+<when> is spoken text: "10 minutes", "an hour", "half an hour", "media hora",
+"dos horas", "90 seconds", "una hora y media"..."""
+import math, re, subprocess, sys
+
+WORDS = {
+    "a": 1, "an": 1, "one": 1, "un": 1, "una": 1, "uno": 1, "two": 2, "dos": 2, "three": 3, "tres": 3,
+    "four": 4, "cuatro": 4, "five": 5, "cinco": 5, "six": 6, "seis": 6, "seven": 7, "siete": 7,
+    "eight": 8, "ocho": 8, "nine": 9, "nueve": 9, "ten": 10, "diez": 10, "eleven": 11, "once": 11,
+    "twelve": 12, "doce": 12, "fifteen": 15, "quince": 15, "twenty": 20, "veinte": 20,
+    "thirty": 30, "treinta": 30, "forty": 40, "cuarenta": 40, "forty five": 45,
+    "fifty": 50, "cincuenta": 50, "sixty": 60, "sesenta": 60, "ninety": 90, "noventa": 90,
+}
+for _i, _w in enumerate(["veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco",
+                        "veintiseis", "veintisiete", "veintiocho", "veintinueve"], 21):
+    WORDS[_w] = _i
+WORDS["veintiun"] = 21
+
+UNITS = {"second": 1 / 60, "seconds": 1 / 60, "segundo": 1 / 60, "segundos": 1 / 60, "sec": 1 / 60,
+         "minute": 1, "minutes": 1, "minuto": 1, "minutos": 1, "min": 1, "mins": 1,
+         "hour": 60, "hours": 60, "hora": 60, "horas": 60}
+
+
+def minutes(when):
+    w = re.sub(r"[^a-z0-9 ]", " ", when.lower())
+    if re.search(r"\b(half an hour|half hour|media hora)\b", w):
+        return 30
+    total, num, found = 0.0, None, False
+    for tok in w.split():
+        if tok.isdigit():
+            num = float(tok)
+        elif tok in WORDS:
+            num = (num or 0) + WORDS[tok] if num and num >= 20 and WORDS[tok] < 10 else WORDS[tok]
+        elif tok in UNITS:
+            total += (num if num is not None else 1) * UNITS[tok]
+            num, found = None, True
+        elif tok in ("and", "y") and found and re.search(r"\b(and a half|y media)\b", w):
+            pass
+    if re.search(r"\b(and a half|y media)\b", w) and found:
+        total += 30 if "hour" in w or "hora" in w else 0.5
+    if not found and num:               # "in 10" -> minutes
+        total, found = num, True
+    return max(1, math.ceil(total)) if found and total > 0 else None
+
+
+def main():
+    when, what = sys.argv[1], sys.argv[2].strip() or "Reminder"
+    lang = sys.argv[3] if len(sys.argv) > 3 else "en"
+    m = minutes(when)
+    if m is None:
+        subprocess.run(["notify-send", "-a", "Voice command", "Voice command", f"Didn't understand the time: “{when}”"])
+        sys.exit(1)
+    what = what[0].upper() + what[1:]
+    if "--dry" in sys.argv:
+        print(f"would run: omarchy reminder {m} {what!r}")
+        return
+    subprocess.run(["omarchy", "reminder", str(m), what], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    t = (f"{m} minuto" + ("s" if m != 1 else "")) if lang.startswith("es") else (f"{m} minute" + ("s" if m != 1 else ""))
+    msg = f"Listo, te aviso en {t}." if lang.startswith("es") else f"Okay, I'll remind you in {t}."
+    subprocess.run(["voice-say", msg, "es" if lang.startswith("es") else "en"])
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--parse":
+        for x in sys.argv[2:]:
+            print(f"{x!r} -> {minutes(x)}")
+    else:
+        main()

@@ -1,0 +1,19 @@
+#!/bin/bash
+# Shut down or reboot after a countdown that can be cancelled
+# (voice commands "turn off pc" / "restart pc").
+#   voice-shutdown [shutdown|reboot]
+# VOICE_SHUTDOWN_DRY=1 prints instead of acting (for testing).
+ACTION=${1:-shutdown}
+DELAY=${VOICE_SHUTDOWN_DELAY:-20}
+case $ACTION in
+  shutdown) title="Shutting down"; done_msg="Shutdown cancelled" ;;
+  reboot)   title="Restarting";    done_msg="Restart cancelled" ;;
+  *) echo "usage: voice-shutdown [shutdown|reboot]" >&2; exit 2 ;;
+esac
+choice=$(timeout "$((DELAY + 1))" notify-send -u critical -a "Voice command" -t "$((DELAY * 1000))" \
+  -A cancel="Cancel" "$title in ${DELAY} s" "Click Cancel to keep the PC on." 2>/dev/null)
+if [[ $choice == cancel ]]; then
+  notify-send -a "Voice command" -t 2000 "Voice command" "$done_msg"
+  exit 0
+fi
+if [[ ${VOICE_SHUTDOWN_DRY:-0} == 1 ]]; then echo "would $ACTION now"; else exec omarchy-system "$ACTION"; fi

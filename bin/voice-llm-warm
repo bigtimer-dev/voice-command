@@ -1,0 +1,5 @@
+#!/bin/bash
+# Start loading the fallback model in Ollama while the command is still being
+# spoken, so its first answer is fast. Ollama only: never touches Superwhisper.
+curl -s -m 60 http://127.0.0.1:11434/api/generate \
+  -d "{\"model\":\"${VOICE_LLM:-gemma3:4b}\",\"keep_alive\":\"5m\"}" >/dev/null 2>&1 &

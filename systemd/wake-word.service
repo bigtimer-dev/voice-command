@@ -1,0 +1,16 @@
+[Unit]
+Description=Wake word "hey jarvis" for voice-command (offline, openWakeWord)
+After=pipewire.service superwhisper.service
+Wants=pipewire.service
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/share/wake-word/venv/bin/python -I %h/.local/share/wake-word/wake_word.py
+Restart=on-failure
+RestartSec=3
+Nice=5
+MemoryMax=400M
+
+[Install]
+WantedBy=graphical-session.target

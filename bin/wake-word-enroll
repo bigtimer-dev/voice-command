@@ -1,0 +1,27 @@
+#!/bin/bash
+# Record more samples of your wake phrase so the wake word knows your voice
+# better. Run in a terminal; say "hey johan" after each beep, the way you
+# normally would. The listener picks up new samples automatically.
+#   wake-word-enroll [count]   (default 5)
+DIR=~/.local/share/wake-word/templates
+N=${1:-5}
+PY=~/.local/share/wake-word/venv/bin/python
+touch "$XDG_RUNTIME_DIR/wake-word.paused"
+trap 'rm -f "$XDG_RUNTIME_DIR/wake-word.paused"' EXIT
+echo "Recording $N samples. After each beep, say \"hey johan\" once."
+for i in $(seq "$N"); do
+  sleep 0.8
+  f="$DIR/enroll-$(date +%Y%m%d-%H%M%S)-$i.wav"
+  paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga
+  echo -n "  $i/$N: speak now... "
+  timeout 2.5 pw-record --rate 16000 --channels 1 "$f" 2>/dev/null
+  ok=$(cd ~ && "$PY" -I -c '
+import sys,os; sys.path.insert(0,os.path.expanduser("~/.local/share/wake-word")); import matcher as M
+t=M.trim(M.read_wav(sys.argv[1])); print("%.2f" % (len(t)/16000))' "$f")
+  if awk "BEGIN{exit !($ok >= 0.35 && $ok <= 1.6)}"; then
+    echo "ok (${ok}s)"
+  else
+    echo "didn't catch it (${ok}s of speech), skipping"; rm -f "$f"
+  fi
+done
+echo "Done: $(ls "$DIR"/*.wav | wc -l) samples. The listener reloads them by itself."

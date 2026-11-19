@@ -1,0 +1,15 @@
+#!/bin/bash
+# Speak text offline with Piper.  voice-say "text" [en|es]
+# The wake word listener is paused while speaking so it doesn't hear itself.
+T=~/.local/share/voice-tts
+case ${2:-en} in
+  es*) V=$T/voices/es_MX-ald-medium.onnx ;;
+  *)   V=$T/voices/en_US-lessac-medium.onnx ;;
+esac
+P="${XDG_RUNTIME_DIR:-/tmp}/wake-word.paused"
+[[ -e $P ]] && own=0 || { own=1; touch "$P"; }
+printf '%s\n' "$1" | "$T/venv/bin/piper" -m "$V" --output-raw 2>/dev/null \
+  | pw-play --rate 22050 --channels 1 --format s16 - 2>/dev/null
+sleep 0.3
+(( own )) && rm -f "$P"
+exit 0

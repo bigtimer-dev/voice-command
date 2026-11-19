@@ -1,0 +1,200 @@
+#!/bin/bash
+# voice-command: say a phrase, launch an app.
+# Hold the shortcut while speaking, release to run (auto-stops after
+# MAX_SECONDS). The audio is transcribed by Superwhisper (offline model, never
+# pasted anywhere) and matched against ~/.config/voice-commands/commands.conf.
+#
+#   voice-command          toggle listening
+#   voice-command --start / --stop   push-to-talk (hold the key, release to run)
+#   voice-command --file rec.wav     transcribe a recording and run its command (wake word)
+#   voice-command --match "open claude"   test the matcher without the mic
+#   voice-command --text "sentence" [en|es]   run a typed sentence for real (with assistant fallback)
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/voice-commands/commands.conf"
+STATE="${XDG_RUNTIME_DIR:-/tmp}/voice-command"
+PIDFILE="$STATE/rec.pid"
+WAV="$STATE/rec.wav"
+MAX_SECONDS=15
+
+mkdir -p "$STATE"
+
+NOTIFY_ID="$STATE/notify.id"
+# each notification replaces the previous one, so "Listening…" goes away on release
+notify() {
+  local id; id=$(cat "$NOTIFY_ID" 2>/dev/null)
+  notify-send -p ${id:+-r "$id"} -a "Voice command" -t "${2:-2500}" "Voice command" "$1" >"$NOTIFY_ID" 2>/dev/null
+}
+
+SND_OK=/usr/share/sounds/freedesktop/stereo/complete.oga
+SND_FAIL=/usr/share/sounds/freedesktop/stereo/dialog-warning.oga
+sound() { paplay "$1" >/dev/null 2>&1 & }
+
+# last number in the sentence, digits or words (English/Spanish), for commands
+# like "go to workspace three" or "set volume to 40" -> $VC_NUM
+number_in() {
+  local w n="" v tens=""
+  for w in $1; do
+    v=""
+    case $w in
+      [0-9]|[0-9][0-9]|100) v=$w ;;
+      one|uno|una|first|primero|primer) v=1 ;; two|dos|second|segundo) v=2 ;;
+      three|tres|third|tercero|tercer) v=3 ;; four|cuatro|fourth|cuarto) v=4 ;;
+      five|cinco|fifth|quinto) v=5 ;; six|seis|sixth|sexto) v=6 ;;
+      seven|siete|seventh|septimo) v=7 ;; eight|ocho|eighth|octavo) v=8 ;;
+      nine|nueve|ninth|noveno) v=9 ;; ten|diez|tenth|decimo) v=10 ;;
+      twenty|veinte) v=20 ;; veintiun|veintiuno) v=21 ;; veintidos) v=22 ;; veintitres) v=23 ;;
+      veinticuatro) v=24 ;; veinticinco) v=25 ;; veintiseis) v=26 ;; veintisiete) v=27 ;;
+      veintiocho) v=28 ;; veintinueve) v=29 ;; thirty|treinta) v=30 ;; forty|cuarenta) v=40 ;;
+      fifty|cincuenta) v=50 ;; sixty|sesenta) v=60 ;; seventy|setenta) v=70 ;;
+      eighty|ochenta) v=80 ;; ninety|noventa) v=90 ;; hundred|cien|ciento) v=100 ;;
+      y|and) [[ -n $tens ]] && continue ;;   # "setenta y cinco", "seventy and five"
+    esac
+    if [[ -n $v ]]; then
+      # "seventy five" / "setenta y cinco" -> 75
+      if [[ -n $tens && $v -lt 10 ]]; then n=$((tens + v)); tens=""; continue; fi
+      n=$v
+      if (( v >= 20 && v < 100 && v % 10 == 0 )); then tens=$v; else tens=""; fi
+    else
+      tens=""
+    fi
+  done
+  printf '%s' "$n"
+}
+
+normalize() {
+  # lowercase, drop accents and punctuation, squeeze spaces
+  printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null \
+    | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9 \n' ' ' | tr -s ' ' \
+    | sed 's/^ //; s/ $//'
+}
+
+run_match() {
+  local text norm pattern cmd re off
+  text="$1"
+  norm=$(normalize "$text")
+  [[ -f $CONF ]] || { notify "No config: $CONF"; return 1; }
+  # pass 1: the whole sentence is the command; pass 2: the command is inside
+  # a longer sentence ("I want to open the terminal"). Patterns written as
+  # ^...$ only count in pass 1.
+  local pass
+  for pass in 1 2; do
+    while IFS=$'\t' read -r pattern cmd; do
+      [[ -z $pattern || $pattern == \#* || -z $cmd ]] && continue
+      if [[ $pattern == ^*\$ ]]; then
+        [[ $pass == 2 ]] && continue
+        pattern=${pattern#^}; pattern=${pattern%\$}
+      fi
+      if [[ $pass == 1 ]]; then re="^(${pattern})$"; off=1; else re="(^| )(${pattern})( |$)"; off=2; fi
+      if [[ $norm =~ $re ]]; then
+        # values: each "(.+)" in the pattern; the first non-empty one is $VC_ARG,
+        # the second $VC_ARG2 (e.g. "remind me in (.+) to (.+)")
+        local -a groups=() vals=()
+        local i opens=0
+        for (( i=0; i<${#pattern}; i++ )); do
+          if [[ ${pattern:i:4} == "(.+)" ]]; then groups+=( $((opens + off + 1)) ); fi
+          [[ ${pattern:i:1} == "(" ]] && opens=$((opens + 1))
+        done
+        for i in "${groups[@]}"; do [[ -n ${BASH_REMATCH[i]} ]] && vals+=( "${BASH_REMATCH[i]}" ); done
+        local arg=${vals[0]:-} arg2=${vals[1]:-}
+        if [[ $cmd == *VC_ARG2* && -z $arg2 ]] || [[ $cmd == *VC_ARG* && -z $arg ]]; then continue; fi
+        local num; num=$(number_in "$norm")
+        if [[ $cmd == *VC_NUM* && -z $num ]]; then continue; fi   # needs a number
+        if [[ ${DRY_RUN:-0} == 1 ]]; then
+          echo "MATCH: '$norm' -> $cmd${num:+  (VC_NUM=$num)}${arg:+  (VC_ARG='$arg')}${arg2:+  (VC_ARG2='$arg2')}"
+        else
+          sound "$SND_OK"
+          notify "“$text” → ${cmd%% *}" 1500
+          (cd "$HOME" && VC_TEXT="$norm" VC_NUM="$num" VC_ARG="$arg" VC_ARG2="$arg2" VC_LANG="${VC_LANG:-}" setsid bash -c "$cmd" >/dev/null 2>&1 &)
+        fi
+        return 0
+      fi
+    done <"$CONF"
+  done
+  if [[ ${DRY_RUN:-0} == 1 ]]; then echo "NO MATCH: '$norm'"; return 1; fi
+  [[ ${NO_ASSIST:-0} == 1 ]] && return 1
+  assist "$text"
+}
+
+# No phrase matched: ask the local model (Ollama) what was meant.
+# It may pick one of the safe commands in catalog.txt, answer a question
+# (shown and spoken), or give up.
+ASSIST=~/.local/share/voice-assistant/assist.py
+assist() {
+  local text=$1 out action phrase answer lang
+  notify "“$text” – thinking…" 15000
+  out=$(python3 -I "$ASSIST" "$text" "${VC_LANG:-}" 2>/dev/null)
+  action=$(jq -r '.action // "none"' <<<"$out" 2>/dev/null)
+  case $action in
+    command)
+      phrase=$(jq -r '.phrase' <<<"$out")
+      NO_ASSIST=1 run_match "$phrase" && return 0 ;;
+    answer)
+      answer=$(jq -r '.text' <<<"$out"); lang=$(jq -r '.lang // "en"' <<<"$out")
+      sound "$SND_OK"
+      notify "$answer" 12000
+      voice-say "$answer" "$lang"
+      return 0 ;;
+  esac
+  sound "$SND_FAIL"; notify "No command for: “$text”" 4000
+  return 1
+}
+
+stop_and_run() {
+  local pid sid text
+  pid=$(<"$PIDFILE"); rm -f "$PIDFILE"
+  kill -INT "$pid" 2>/dev/null
+  for _ in $(seq 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
+  transcribe_and_run "$WAV"
+}
+
+transcribe_and_run() {
+  local wav=$1 sid text
+  [[ -s $wav ]] || { sound "$SND_FAIL"; notify "No audio recorded"; return 1; }
+  notify "Thinking…" 10000
+
+  sid=$(superwhisper transcribe "$wav" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("session_id",""))')
+  [[ -n $sid ]] || { sound "$SND_FAIL"; notify "Superwhisper did not accept the audio"; return 1; }
+  # wait for this session's text (model may need a few seconds to wake)
+  for _ in $(seq 150); do
+    text=$(superwhisper read | python3 -c '
+import json,sys
+d=json.load(sys.stdin) or {}
+if str(d.get("session_id"))==sys.argv[1]: print("OK\t"+(d.get("language") or "")+"\t"+(d.get("text") or ""))
+' "$sid")
+    [[ $text == OK* ]] && break
+    sleep 0.1
+  done
+  [[ $text == OK* ]] || { sound "$SND_FAIL"; notify "Transcription timed out"; return 1; }
+  text=${text#OK$'\t'}
+  VC_LANG=${text%%$'\t'*}; text=${text#*$'\t'}
+  [[ -n $text ]] || { sound "$SND_FAIL"; notify "Didn't hear anything"; return 1; }
+  run_match "$text"
+}
+
+# music goes back up when this run ends (after any spoken answer)
+case "${1:-}" in --file|--stop|"") trap 'voice-duck restore' EXIT ;; esac
+
+case "${1:-}" in
+  --match) DRY_RUN=1 run_match "$2"; exit ;;
+  --file) transcribe_and_run "$2"; exit ;;
+  --text) VC_LANG=${3:-} run_match "$2"; exit ;;
+  --stop) [[ -f $PIDFILE ]] && stop_and_run; exit ;;
+  --start) [[ -f $PIDFILE ]] && kill -0 "$(<"$PIDFILE")" 2>/dev/null && exit ;;
+esac
+
+if [[ ${1:-} != --start && -f $PIDFILE ]] && kill -0 "$(<"$PIDFILE")" 2>/dev/null; then
+  stop_and_run
+else
+  trap - EXIT                           # starting: keep it ducked until --stop
+  voice-duck duck
+  voice-llm-warm
+  rm -f "$WAV"
+  pw-record --rate 16000 --channels 1 "$WAV" &
+  rec=$!
+  echo "$rec" >"$PIDFILE"
+  notify "Listening…" $((MAX_SECONDS * 1000))
+  # safety auto-stop, only for this same recording
+  (sleep "$MAX_SECONDS"
+   [[ -f $PIDFILE && $(<"$PIDFILE") == "$rec" ]] && "$0" --stop) >/dev/null 2>&1 &
+  disown -a
+fi

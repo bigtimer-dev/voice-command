@@ -1,0 +1,4 @@
+spotify.env
+*.wav
+__pycache__/
+venv/
