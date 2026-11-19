@@ -15,7 +15,7 @@ Offline voice commands for [Omarchy](https://omarchy.org) (Hyprland) using
   - "search YouTube for lofi", "search Google for …"
   - "remind me in 10 minutes to check the oven", "set a timer for 5 minutes"
   - "play Rammstein on Spotify" (plays it automatically)
-- **Free-form sentences:** when no phrase matches, a small local model (Ollama, `gemma3:4b`)
+- **Free-form sentences:** when no phrase matches, a small local model (Ollama, `qwen3:4b`)
   works out what you meant ("it's too loud" → volume down) or answers a short question out
   loud with an offline Piper voice. Time and date are answered from the clock. Shutdown,
   restart and close window are never reachable this way.
@@ -45,7 +45,8 @@ git clone https://github.com/bigtimer-dev/voice-command && cd voice-command
 Then:
 
 - **Bindings:** copy `hypr/voice-bindings.lua` into `~/.config/hypr/bindings.lua`.
-- **Smart fallback:** `ollama pull gemma3:4b`
+- **Smart fallback:** `ollama pull qwen3:4b`
+  (any Ollama model works: set `VOICE_LLM=<model>` in your session environment)
 - **Spotify auto-play:** create a free app at <https://developer.spotify.com/dashboard>
   (Web API) and put its Client ID and secret in `~/.config/voice-commands/spotify.env`.
   Without it, "play X on Spotify" opens the search page instead.
