@@ -46,6 +46,31 @@ def clock_answer(sentence, lang):
     return {"action": "answer", "text": text, "lang": "es" if es else "en"}
 
 
+# "close the browser" must never become "open browser": the model likes the
+# nearest command even when the rules say closing is not allowed.
+CLOSING = re.compile(r"\b(close|closing|quit|exit|kill|shut|turn off|switch off|get rid of|"
+                     r"cierra|cerrar|cierre|cierres|cierralo|cierrala|sal de|salir de|salte de|"
+                     r"apaga|apagar|quita|quitar|mata|matar|termina|terminar)\b")
+
+
+# what a "close/stop/turn off" sentence may still mean
+WHEN_CLOSING = {"play pause music", "mute"}
+FULLSCREEN = re.compile(r"\b(full ?screen|pantalla completa)\b")
+
+
+def closing_ok(command, sentence):
+    t = plain(sentence)
+    if not CLOSING.search(t):
+        return True
+    return command in WHEN_CLOSING or (command == "fullscreen window" and bool(FULLSCREEN.search(t)))
+
+
+def plain(text):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9 ]+", " ", t)
+
+
 def sh(*cmd):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=1).stdout
@@ -198,7 +223,8 @@ def main():
         words = c.split()
         q = (out.get("query") or "").strip()
         if (c not in cmds or ("N" in words and not isinstance(out.get("number"), int))
-                or ("X" in words and not q)):
+                or ("X" in words and not q)
+                or not closing_ok(c, sentence)):
             out = {"action": "none", "lang": out.get("lang", "en")}
         else:
             out["phrase"] = " ".join(str(out["number"]) if w == "N" else q if w == "X" else w for w in words)
