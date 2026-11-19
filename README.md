@@ -1,8 +1,9 @@
 # voice-command
 
 Offline voice commands for [Omarchy](https://omarchy.org) (Hyprland) using
-[Superwhisper](https://superwhisper.com) for speech-to-text. Say
-**"hey jarvis, open the terminal"** or hold a key and talk. Works in English and Spanish.
+[Superwhisper](https://superwhisper.com) for speech-to-text. Hold
+a key and say **"open the terminal"**, or turn on the optional wake word and say
+**"hey jarvis, open the terminal"**. Works in English and Spanish.
 
 ## What it does
 
@@ -25,7 +26,7 @@ Offline voice commands for [Omarchy](https://omarchy.org) (Hyprland) using
 
 | Trigger | How |
 |---|---|
-| Wake word | say "hey jarvis", then the command (or both in one breath) |
+| Wake word (optional, `./install.sh --wake-word`) | say "hey jarvis", then the command (or both in one breath) |
 | Keyboard | hold **Ctrl+Shift+Alt+Space**, talk, release |
 | Mouse | hold both side buttons, talk, release either one |
 
@@ -39,8 +40,12 @@ Optional: Ollama for the smart fallback, and Spotify for music.
 
 ```bash
 git clone https://github.com/bigtimer-dev/voice-command && cd voice-command
-./install.sh
+./install.sh                # push-to-talk only
+./install.sh --wake-word    # also the always-on "hey jarvis" listener
 ```
+
+`./install.sh --no-wake-word` removes the listener again. Re-running `./install.sh` with
+no flag keeps whatever you chose before.
 
 Then:
 
@@ -80,7 +85,7 @@ voice-command --text "it's too loud"                # runs it, fallback included
 | `bin/voice-duck` | lower and restore playing audio |
 | `bin/voice-shutdown` | cancellable shutdown/restart countdown |
 | `bin/voice-llm-warm` | preload the Ollama model on wake |
-| `wake-word/wake_word.py` | always-on listener (`wake-word.service`) |
+| `wake-word/wake_word.py` | always-on listener (`wake-word.service`), only with `--wake-word` |
 | `wake-word/matcher.py`, `bin/wake-word-enroll` | optional personal wake phrase (MFCC + DTW on your own recordings, `WAKE_JOHAN=1`) |
 | `assistant/assist.py` | local LLM fallback |
 
