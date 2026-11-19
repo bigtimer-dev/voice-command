@@ -1,14 +1,16 @@
 #!/bin/bash
 # voice-duck duck|restore : lower playing audio (music, videos) while you give a
-# voice command, then put it back. Per-app, so a stream Spotify recreates
-# meanwhile (new song) is restored too and never stays quiet.
+# voice command, then put it back. Each stream gets its own volume back; a stream
+# an app created meanwhile (Spotify, on a new song) gets that app's volume, so it
+# never stays quiet.
 STATE="${XDG_RUNTIME_DIR:-/tmp}/voice-command/duck.tsv"
 LEVEL=${VOICE_DUCK_LEVEL:-20}          # percent of the current volume while listening
 SELF='^(paplay|pw-play|pw-cat|pw-record|piper|python3?|notify-send)$'
 mkdir -p "${STATE%/*}"
 
-streams() {   # index <TAB> app key <TAB> volume% , playing streams only
-  pactl -f json list sink-inputs 2>/dev/null | jq -r '.[] | select(.corked == false)
+streams() {   # index <TAB> app key <TAB> volume%   (playing streams only, or all with "all")
+  pactl -f json list sink-inputs 2>/dev/null | jq -r --arg all "${1:-}" '.[]
+    | select($all == "all" or .corked == false)
     | [.index, (.properties["application.process.binary"] // .properties["application.name"] // "?"),
        (.volume | to_entries[0].value.value_percent | rtrimstr("%"))] | @tsv'
 }
@@ -19,16 +21,17 @@ case ${1:-} in
     : >"$STATE"
     while IFS=$'\t' read -r idx app vol; do
       [[ $app =~ $SELF ]] && continue
-      printf '%s\t%s\n' "$app" "$vol" >>"$STATE"
+      printf '%s\t%s\t%s\n' "$idx" "$app" "$vol" >>"$STATE"
       pactl set-sink-input-volume "$idx" "$(( vol * LEVEL / 100 ))%"
     done < <(streams) ;;
   restore)
     [[ -s $STATE ]] || { rm -f "$STATE"; exit 0; }
     while IFS=$'\t' read -r idx app _; do
-      vol=$(awk -F'\t' -v a="$app" '$1 == a { print $2; exit }' "$STATE")
+      # same stream: its own volume; a stream the app recreated: the app's first one
+      vol=$(awk -F'\t' -v i="$idx" -v a="$app" '$1 == i && $2 == a { print $3; f = 1; exit }
+            $2 == a && !first { first = $3 } END { if (!f && first != "") print first }' "$STATE")
       [[ -n $vol ]] && pactl set-sink-input-volume "$idx" "$vol%"
-    done < <(pactl -f json list sink-inputs 2>/dev/null | jq -r '.[] | [.index,
-      (.properties["application.process.binary"] // .properties["application.name"] // "?"), 0] | @tsv')
+    done < <(streams all)
     rm -f "$STATE" ;;
   *) echo "usage: voice-duck duck|restore" >&2; exit 2 ;;
 esac

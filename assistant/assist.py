@@ -46,7 +46,7 @@ def clock_answer(sentence, lang):
     return {"action": "answer", "text": text, "lang": "es" if es else "en"}
 
 
-def facts(sentence):
+def facts():
     return time.strftime("Today is %A %d %B %Y.")
 
 
@@ -94,7 +94,7 @@ def main():
     quick = clock_answer(sentence, lang)
     if quick:
         print(json.dumps(quick, ensure_ascii=False)); return
-    system += ("\n" + facts(sentence))
+    system += ("\n" + facts())
     messages = [{"role": "system", "content": system}]
     for q, a in examples:
         messages += [{"role": "user", "content": q},

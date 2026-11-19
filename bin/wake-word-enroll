@@ -1,14 +1,15 @@
 #!/bin/bash
 # Record more samples of your wake phrase so the wake word knows your voice
-# better. Run in a terminal; say "hey johan" after each beep, the way you
+# better. Run in a terminal; say your phrase after each beep, the way you
 # normally would. The listener picks up new samples automatically.
 #   wake-word-enroll [count]   (default 5)
+# Then set WAKE_PERSONAL=1 for wake-word.service (systemctl --user edit wake-word).
 DIR=~/.local/share/wake-word/templates
 N=${1:-5}
 PY=~/.local/share/wake-word/venv/bin/python
 touch "$XDG_RUNTIME_DIR/wake-word.paused"
 trap 'rm -f "$XDG_RUNTIME_DIR/wake-word.paused"' EXIT
-echo "Recording $N samples. After each beep, say \"hey johan\" once."
+echo "Recording $N samples. After each beep, say your wake phrase once."
 for i in $(seq "$N"); do
   sleep 0.8
   f="$DIR/enroll-$(date +%Y%m%d-%H%M%S)-$i.wav"

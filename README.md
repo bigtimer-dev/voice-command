@@ -50,6 +50,10 @@ no flag keeps whatever you chose before.
 Then:
 
 - **Bindings:** copy `hypr/voice-bindings.lua` into `~/.config/hypr/bindings.lua`.
+  The mouse part uses the usual Back/Forward side buttons (`mouse:275` and `mouse:276`)
+  and takes them over, so apps no longer get Back/Forward from them. If your mouse has
+  no side buttons, or you want to keep them, leave that part out. Other button codes:
+  check `wev` while pressing them.
 - **Smart fallback:** `ollama pull qwen3:4b`
   (any Ollama model works: set `VOICE_LLM=<model>` in your session environment)
 - **Spotify auto-play:** create a free app at <https://developer.spotify.com/dashboard>
@@ -86,7 +90,7 @@ voice-command --text "it's too loud"                # runs it, fallback included
 | `bin/voice-shutdown` | cancellable shutdown/restart countdown |
 | `bin/voice-llm-warm` | preload the Ollama model on wake |
 | `wake-word/wake_word.py` | always-on listener (`wake-word.service`), only with `--wake-word` |
-| `wake-word/matcher.py`, `bin/wake-word-enroll` | optional personal wake phrase (MFCC + DTW on your own recordings, `WAKE_JOHAN=1`) |
+| `wake-word/matcher.py`, `bin/wake-word-enroll` | optional personal wake phrase (MFCC + DTW on your own recordings, `WAKE_PERSONAL=1`) |
 | `assistant/assist.py` | local LLM fallback |
 
 ## Privacy
