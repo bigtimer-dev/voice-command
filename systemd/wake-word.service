@@ -1,6 +1,10 @@
 [Unit]
 Description=Wake word "hey jarvis" for voice-command (offline, openWakeWord)
-After=pipewire.service superwhisper.service
+# Part of the desktop session: if Hyprland restarts (crash, re-login), the
+# listener restarts too and picks up the new HYPRLAND_INSTANCE_SIGNATURE.
+# Otherwise hyprctl commands (close window, workspaces) fail with a stale socket.
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service superwhisper.service
 Wants=pipewire.service
 
 [Service]
