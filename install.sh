@@ -31,5 +31,5 @@ systemctl --user enable --now wake-word.service
 echo
 echo "Installed. Optional next steps:"
 echo "  - key/mouse bindings: add hypr/voice-bindings.lua to ~/.config/hypr/bindings.lua"
-echo "  - smart fallback: ollama pull gemma3:4b"
+echo "  - smart fallback: ollama pull qwen3:4b"
 echo "  - Spotify auto-play: fill in $CONF/spotify.env"

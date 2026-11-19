@@ -5,7 +5,7 @@ Prints JSON: {"action": "command", "phrase": "..."} | {"action": "answer", "text
 """
 import json, os, re, sys, time, urllib.request
 
-MODEL = os.environ.get("VOICE_LLM", "gemma3:4b")
+MODEL = os.environ.get("VOICE_LLM", "qwen3:4b")
 CATALOG = os.path.expanduser("~/.config/voice-commands/catalog.txt")
 
 
