@@ -5,22 +5,22 @@ open agent | Claude Code AI coding assistant; programming, writing code, asking 
 open browser | web browser; browsing, searching the web, reading a website
 open terminal | command line shell
 open files | file manager; finding documents, downloads, folders
-open spotify | music app; wanting to listen to music (when nothing is playing)
-open youtube | videos; wanting to watch something or a video
+open spotify | open the music app when no particular music is named
+open youtube | open YouTube when no topic is named
 open settings | system settings: wifi, bluetooth, sound, display
 fullscreen window | make the current window fill the screen, or leave fullscreen
 lock screen | lock the computer when leaving
-play pause music | pause, resume, stop or continue whatever is playing
-next song | skip to the next track
+play pause music | pause, resume, stop or continue whatever is playing (not for skipping)
+next song | skip the current track: the user dislikes it or wants another
 previous song | go back to the previous track
-volume up | louder; can't hear well
+volume up | louder; too quiet, can't hear well (if muted, use mute instead)
 volume down | quieter; too loud
 set volume to N | set the volume to a percentage
-mute | silence or unmute all sound
+mute | turn all sound off, or back on when it is muted ("no sound")
 go to workspace N | switch to desktop/workspace number N
 move window to workspace N | send the current window to workspace N
-search youtube for X | find videos about something on YouTube (X = what to search)
-search the web for X | look something up on Google: news, prices, weather, how-to (X = search text)
-remind me in N minutes to X | reminder after N minutes (convert hours to minutes) with message X
-set a timer for N minutes | countdown timer of N minutes
-play on spotify X | play an artist, song or playlist on Spotify (X = what to play)
+search youtube for X | videos about a topic (X = the topic)
+search the web for X | things that change or need the internet: news, weather, prices, schedules (X = search text)
+remind me in N minutes to X | tell the user something later: reminders, "wake me", "avisame" (convert hours to minutes; X = the message)
+set a timer for N minutes | countdown of N minutes with no message
+play on spotify X | play music: an artist, song, genre or mood like "to study" (X = the music, in the user's words)

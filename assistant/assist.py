@@ -3,7 +3,7 @@
 catalog commands, or answer a short question. Local Ollama model, offline.
 Prints JSON: {"action": "command", "phrase": "..."} | {"action": "answer", "text": "...", "lang": "en|es"} | {"action": "none"}
 """
-import json, os, re, sys, time, urllib.request
+import json, os, re, subprocess, sys, time, urllib.request
 
 MODEL = os.environ.get("VOICE_LLM", "qwen3:4b")
 CATALOG = os.path.expanduser("~/.config/voice-commands/catalog.txt")
@@ -46,8 +46,78 @@ def clock_answer(sentence, lang):
     return {"action": "answer", "text": text, "lang": "es" if es else "en"}
 
 
-def facts():
-    return time.strftime("Today is %A %d %B %Y.")
+def sh(*cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=1).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def media():
+    """What the MPRIS players are doing; a playing one first."""
+    names = re.findall(r"org\.mpris\.MediaPlayer2\.[\w.-]+", sh("busctl", "--user", "list", "--no-pager"))
+    found = []
+    for name in dict.fromkeys(names):
+        prop = lambda p: sh("busctl", "--user", "-j", "get-property", name, "/org/mpris/MediaPlayer2",
+                            "org.mpris.MediaPlayer2.Player", p)
+        try:
+            status = json.loads(prop("PlaybackStatus"))["data"]
+            meta = json.loads(prop("Metadata"))["data"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        artist = meta.get("xesam:artist", {}).get("data") or [""]
+        found.append({"player": name[len("org.mpris.MediaPlayer2."):].split(".instance")[0], "status": status,
+                      "title": meta.get("xesam:title", {}).get("data", ""), "artist": ", ".join(artist)})
+    found.sort(key=lambda m: m["status"] != "Playing")
+    return found[0] if found else {}
+
+
+def desktop_state():
+    """Volume, media, focused window and workspace, so the model knows what
+    "it", "this song" or "no sound" refer to. VC_STATE (JSON) overrides it for tests."""
+    if os.environ.get("VC_STATE"):
+        return json.loads(os.environ["VC_STATE"])
+    st = {}
+    m = re.search(r"Volume: ([\d.]+)( \[MUTED\])?", sh("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"))
+    if m:
+        st["volume"], st["muted"] = round(float(m.group(1)) * 100), bool(m.group(2))
+    st.update(media())
+    try:
+        w = json.loads(sh("hyprctl", "activewindow", "-j") or "{}")
+        st["window"], st["window_title"] = w.get("class", ""), (w.get("title") or "")[:80]
+        st["workspace"] = json.loads(sh("hyprctl", "activeworkspace", "-j") or "{}").get("id")
+    except ValueError:
+        pass
+    return st
+
+
+def facts(st, clock=True):
+    lines = [time.strftime("Now: %A %d %B %Y, %H:%M.")] if clock else []
+    if "volume" in st:
+        lines.append(f"Sound: volume {st['volume']}%" + (", MUTED." if st.get("muted") else ", not muted."))
+    if st.get("title"):
+        what = f'"{st["title"]}"' + (f' by {st["artist"]}' if st.get("artist") else "")
+        verb = {"Playing": "is playing", "Paused": "is paused on"}.get(st.get("status"), "has")
+        lines.append(f"Media: {st.get('player', 'a player')} {verb} {what}.")
+    else:
+        lines.append("Media: nothing is playing.")
+    if st.get("window"):
+        lines.append(f'Focused window: {st["window"]}' + (f' ("{st["window_title"]}")' if st.get("window_title") else "") + ".")
+    if st.get("workspace"):
+        lines.append(f"Current workspace: {st['workspace']}.")
+    return "Current desktop state:\n" + "\n".join("- " + l for l in lines)
+
+
+RULES = """How to decide:
+- Too loud -> volume down. Too quiet, can't hear, louder -> volume up; but if the sound is MUTED, use mute (it turns sound back on).
+- Dislikes the current song or wants a different one -> next song. Wants the one before -> previous song. Pause, stop, resume -> play pause music.
+- Names music to hear (artist, song, genre, or a mood like "to study" or "para dormir") -> play on spotify X, X = that music in the user's words. open spotify only when no music is named.
+- Wants to change wifi, bluetooth, display or sound devices -> open settings.
+- Wants videos about a topic -> search youtube for X. open youtube only when no topic is named.
+- Wants to be told something later, with or without the word remind ("wake me", "tell me in", "avisame", "dime en") -> remind me in N minutes to X. A countdown with no message -> set a timer for N minutes. N is in minutes, as said: "twenty minutes" -> 20, "an hour" -> 60, "media hora" -> 30.
+- Questions you can answer from knowledge (facts, books, history, math, units, definitions) or from the desktop state given with the sentence (the song playing, the volume, the time) -> answer. search the web only for things that change: news, weather, prices, scores, schedules.
+- Speech meant for another person (often starts with their name or "mom", "mamá"), thanks or small talk, or unclear -> none, even if it mentions music or places.
+- Closing, quitting, shutting down or restarting anything is never allowed -> none."""
 
 
 def main():
@@ -66,7 +136,7 @@ def main():
         "(keep the user's words and language for X).\n"
         "- answer: a question you can answer in words (facts, math, definitions, quick advice). "
         "Reply in the user's language in 'text', max 2 short sentences, plain text for speaking aloud.\n"
-        "- none: talking to someone else, unclear, or an action that is not in the list."
+        "- none: talking to someone else, unclear, or an action that is not in the list.\n\n" + RULES
     )
     examples = [
         ("I want to listen to some music", {"action": "command", "command": "open spotify", "lang": "en"}),
@@ -78,6 +148,9 @@ def main():
         ("cuánto es 6 por 7", {"action": "answer", "text": "6 por 7 es 42.", "lang": "es"}),
         ("did you call your mom yesterday", {"action": "none", "lang": "en"}),
         ("turn off the computer", {"action": "none", "lang": "en"}),
+        # with a desktop state, like real requests: answer from it
+        ("what am I listening to", {"action": "answer", "text": "You're listening to Yellow by Coldplay.", "lang": "en"},
+         {"volume": 70, "muted": False, "player": "spotify", "status": "Playing", "title": "Yellow", "artist": "Coldplay"}),
     ]
     schema = {
         "type": "object",
@@ -94,12 +167,17 @@ def main():
     quick = clock_answer(sentence, lang)
     if quick:
         print(json.dumps(quick, ensure_ascii=False)); return
-    system += ("\n" + facts())
+    # The desktop state goes with the sentence, not in the system prompt: the
+    # system prompt and examples then stay identical between requests, so
+    # Ollama reuses their cached prefix and only reads the new part.
+    def turn(text, lang="", st=None, clock=False):
+        return text + (f"  [spoken language: {lang}]" if lang in ("en", "es") else "") + \
+            ("\n\n" + facts(st, clock) if st is not None else "")
     messages = [{"role": "system", "content": system}]
-    for q, a in examples:
-        messages += [{"role": "user", "content": q},
+    for q, a, *st in examples:
+        messages += [{"role": "user", "content": turn(q, a.get("lang", ""), st[0] if st else None)},
                      {"role": "assistant", "content": json.dumps(a, ensure_ascii=False)}]
-    messages.append({"role": "user", "content": sentence + (f"  [spoken language: {lang}]" if lang in ("en", "es") else "")})
+    messages.append({"role": "user", "content": turn(sentence, lang, desktop_state(), clock=True)})
     body = {
         "model": MODEL, "stream": False, "format": schema, "think": False,
         "keep_alive": "5m",
