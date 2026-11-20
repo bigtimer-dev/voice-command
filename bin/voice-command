@@ -147,27 +147,60 @@ stop_and_run() {
   transcribe_and_run "$WAV"
 }
 
-transcribe_and_run() {
-  local wav=$1 sid text
-  [[ -s $wav ]] || { sound "$SND_FAIL"; notify "No audio recorded"; return 1; }
-  notify "Thinking…" 10000
+sw_ready() {
+  superwhisper status 2>/dev/null | python3 -c 'import json,sys
+try: sys.exit(0 if json.load(sys.stdin).get("ready") else 1)
+except ValueError: sys.exit(1)'
+}
 
-  sid=$(superwhisper transcribe "$wav" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("session_id",""))')
-  [[ -n $sid ]] || { sound "$SND_FAIL"; notify "Superwhisper did not accept the audio"; return 1; }
-  # wait for this session's text (model may need a few seconds to wake)
+# one transcription: prints "OK<TAB>lang<TAB>text", "FAIL<TAB>reason" or "TIMEOUT"
+sw_transcribe() {
+  local wav=$1 out sid text
+  out=$(superwhisper transcribe "$wav" 2>&1)
+  sid=$(python3 -c 'import json,sys
+try: print(json.loads(sys.argv[1]).get("session_id",""))
+except ValueError: pass' "$out")
+  [[ -n $sid ]] || { printf 'FAIL\t%s\n' "$out"; return; }
+  # wait for this session's text
   for _ in $(seq 150); do
     text=$(superwhisper read | python3 -c '
 import json,sys
 d=json.load(sys.stdin) or {}
-if str(d.get("session_id"))==sys.argv[1]: print("OK\t"+(d.get("language") or "")+"\t"+(d.get("text") or ""))
+if str(d.get("session_id"))==sys.argv[1]:
+    t=(d.get("text") or "").replace("\t"," ").replace("\n"," ")
+    print("OK\t"+(d.get("language") or "")+"\t"+t if t else "FAIL\t"+str(d.get("error") or d.get("warning") or "empty"))
 ' "$sid")
-    [[ $text == OK* ]] && break
+    [[ $text == OK* || $text == FAIL* ]] && { echo "$text"; return; }
     sleep 0.1
   done
-  [[ $text == OK* ]] || { sound "$SND_FAIL"; notify "Transcription timed out"; return 1; }
+  echo TIMEOUT
+}
+
+transcribe_and_run() {
+  local wav=$1 text was_ready=1
+  [[ -s $wav ]] || { sound "$SND_FAIL"; notify "No audio recorded"; return 1; }
+  notify "Thinking…" 10000
+  sw_ready || was_ready=0
+
+  text=$(sw_transcribe "$wav")
+  # Superwhisper asleep (idle_sleep): the first file comes back empty or with
+  # "Local models unavailable" while it wakes up. Wait until ready, retry once.
+  if [[ $text != OK* && $was_ready == 0 ]]; then
+    notify "Waking up Superwhisper…" 30000
+    for _ in $(seq 60); do sw_ready && break; sleep 0.5; done
+    text=$(sw_transcribe "$wav")
+  fi
+  case $text in
+    OK*) ;;
+    TIMEOUT) sound "$SND_FAIL"; notify "Transcription timed out"; return 1 ;;
+    *) local why=${text#FAIL$'\t'}
+       sound "$SND_FAIL"
+       if [[ $why == *"No speech"* || $why == empty ]]; then notify "Didn't hear anything"
+       else notify "Superwhisper: ${why:0:120}"; fi
+       return 1 ;;
+  esac
   text=${text#OK$'\t'}
   VC_LANG=${text%%$'\t'*}; text=${text#*$'\t'}
-  [[ -n $text ]] || { sound "$SND_FAIL"; notify "Didn't hear anything"; return 1; }
   run_match "$text"
 }
 
